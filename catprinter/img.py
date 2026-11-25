@@ -169,27 +169,63 @@ def read_img(
     return ~bin_img_bool
 
 
+def _dihedral_transforms():
+    """The 8 rotations/flips an EXIF orientation tag can describe, identity first."""
+    for flip in (False, True):
+        for k in range(4):
+            yield lambda a, k=k, flip=flip: np.rot90(np.fliplr(a) if flip else a, k)
+
+
+def _apply_exif_orientation_with_alpha(filename, im_unchanged: np.ndarray) -> np.ndarray:
+    """
+    cv2.IMREAD_UNCHANGED keeps the alpha channel but ignores the EXIF orientation
+    tag. Decode the color channels with and without orientation applied, find which
+    rotation/flip maps one onto the other, and apply it to the RGBA image as well.
+    """
+    oriented = cv2.imread(filename, cv2.IMREAD_COLOR)
+    unoriented = cv2.imread(
+        filename, cv2.IMREAD_COLOR | cv2.IMREAD_IGNORE_ORIENTATION
+    )
+    if oriented is None or unoriented is None:
+        return im_unchanged
+    for transform in _dihedral_transforms():
+        if np.array_equal(transform(unoriented), oriented):
+            return np.ascontiguousarray(transform(im_unchanged))
+    logger.warning("⚠️  Could not determine EXIF orientation; using image as stored.")
+    return im_unchanged
+
+
 def read_img_grayscale(
     filename,
     bg_color=[255, 255, 255],
 ) -> np.ndarray:
     """
-    Reads an image from filename and converts it to grayscale.
-    If the image has an alpha channel, it is blended with bg_color.
+    Reads an image from filename and converts it to grayscale, honoring the
+    EXIF orientation tag (e.g. photos taken with a phone held upright).
+    If the image has an alpha channel, it is blended with bg_color (B, G, R order, as OpenCV stores pixels).
     """
     im = cv2.imread(filename, cv2.IMREAD_UNCHANGED)
     if im is None:
         raise RuntimeError(f"Could not read image file: {filename}")
 
+    has_alpha = im.ndim == 3 and im.shape[2] == 4
+    if has_alpha:
+        im = _apply_exif_orientation_with_alpha(filename, im)
+    else:
+        # Unlike IMREAD_UNCHANGED, IMREAD_COLOR applies the EXIF orientation.
+        oriented = cv2.imread(filename, cv2.IMREAD_COLOR)
+        if oriented is not None:
+            im = oriented
+
     # If image has alpha channel
-    if im.ndim == 3 and im.shape[2] == 4:
-        rgb = im[..., :3].astype(np.float32)
+    if has_alpha:
+        bgr = im[..., :3].astype(np.float32)
         alpha = im[..., 3].astype(np.float32) / 255.0
         bg = np.array(bg_color, dtype=np.float32)
         # Blend each pixel with bg_color according to alpha
-        blended = rgb * alpha[..., None] + bg * (1 - alpha[..., None])
+        blended = bgr * alpha[..., None] + bg * (1 - alpha[..., None])
         # Convert to grayscale
-        im_gray = cv2.cvtColor(blended.astype(np.uint8), cv2.COLOR_RGB2GRAY)
+        im_gray = cv2.cvtColor(blended.astype(np.uint8), cv2.COLOR_BGR2GRAY)
     else:
         # Already grayscale or no alpha
         if im.ndim == 2:
