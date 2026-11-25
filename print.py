@@ -1,4 +1,13 @@
-#!/usr/bin/env python
+#!/usr/bin/env -S uv run --script
+# /// script
+# requires-python = ">=3.10"
+# dependencies = [
+#     "bleak==0.22.3",
+#     "numpy==2.2.4",
+#     "opencv-python==4.11.0.86",
+# ]
+# ///
+# NOTE: keep this dependency list in sync with pyproject.toml.
 import argparse
 import asyncio
 import logging

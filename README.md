@@ -9,20 +9,45 @@ channel on the [Hack Club Slack](https://hackclub.com/slack)!
 
 # Setup
 
-[uv](https://docs.astral.sh/uv/) is reccomended, but you should be able to use
-any Python virtual environment you're comfortable with.
+The only requirement is [uv](https://docs.astral.sh/uv/getting-started/installation/).
+`print.py` is a self-contained uv script: its dependencies are declared in a
+[PEP 723](https://peps.python.org/pep-0723/) block at the top of the file, and
+its shebang (`#!/usr/bin/env -S uv run --script`) makes uv install them into a
+cached environment the first time you run it. There's no venv to create or
+activate.
 
 ```bash
-# Make sure you have uv installed
-# https://docs.astral.sh/uv/getting-started/installation/
+# Install uv (macOS/Linux; see the link above for other options)
+$ curl -LsSf https://astral.sh/uv/install.sh | sh
 
-# Clone and navigate to the repo, then run the following commands:
-
-$ uv venv
-$ source venv/bin/activate # linux/macOS
-$ venv\Scripts\activate # windows
-$ uv pip install -r requirements.txt
+# Clone the repo and run the script directly
+$ git clone <this-repo-url> MXW01-catprinter
+$ cd MXW01-catprinter
+$ ./print.py --help
 ```
+
+## Running the script
+
+```bash
+# From inside the repo
+$ ./print.py ~/Pictures/cat.png
+
+# From any other directory, using the full path
+$ ~/path/to/MXW01-catprinter/print.py ~/Pictures/cat.png
+
+# Or symlink it onto your PATH and run it from anywhere
+$ ln -s "$PWD/print.py" ~/.local/bin/catprint
+$ catprint ~/Pictures/cat.png
+
+# Windows (shebangs aren't supported), or if the file isn't executable
+$ uv run --script print.py ~/Pictures/cat.png
+```
+
+The first run takes a little longer while uv downloads the dependencies;
+later runs reuse the cached environment.
+
+If you change the dependencies, update both the `# /// script` block in
+`print.py` and `pyproject.toml` so they stay in sync.
 
 # Usage
 
