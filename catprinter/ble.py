@@ -79,28 +79,14 @@ def notification_receiver_factory(notification_state: NotificationState):
                 if len(data) >= expected_payload_end_idx:
                     payload = bytes(data[6:expected_payload_end_idx])
 
-                    # --- Optional: Perform CRC/Footer check only if data is long enough ---
-                    expected_total_len = 8 + payload_len  # Includes CRC and Footer
-                    if len(data) >= expected_total_len:
-                        crc_received = data[expected_payload_end_idx]
-                        footer = data[expected_payload_end_idx + 1]
-                        crc_calculated = cmds.calculate_crc8(payload)
-                        if crc_received != crc_calculated:
-                            logger.warning(
-                                f"CRC mismatch for 0x{cmd_id:02X}. Got {crc_received:02X}, expected {crc_calculated:02X}. Payload: {payload.hex()}"
-                            )
-                        if footer != 0xFF:
-                            logger.warning(
-                                f"Invalid footer for 0x{cmd_id:02X}. Got {footer:02X}, expected FF."
-                            )
-                    elif len(data) > expected_payload_end_idx:
-                        # Data is longer than payload but shorter than full packet
-                        logger.warning(
-                            f"Notification for 0x{cmd_id:02X} possibly truncated. Length {len(data)}, expected payload end at {expected_payload_end_idx}, expected total {expected_total_len}. Skipping CRC/Footer check."
-                        )
-                    # else: Data ends exactly after payload, CRC/Footer definitely missing.
+                    # Unlike outgoing commands, notifications carry no CRC: the
+                    # payload is followed by a single trailing byte of unknown
+                    # meaning (observed as 0x00 on the MXW01), so don't validate it.
+                    trailer = bytes(data[expected_payload_end_idx:])
+                    logger.debug(
+                        f"Notification 0x{cmd_id:02X} raw: {bytes(data).hex()} (trailer: {trailer.hex() or 'none'})"
+                    )
 
-                    # --- Process the payload regardless of CRC/Footer issues ---
                     logger.info(
                         f"Received Response ID: 0x{cmd_id:02X}, Payload: {payload.hex()}"
                     )
@@ -248,20 +234,22 @@ async def run_ble(image_data_buffer: bytes, device: Optional[str], intensity: in
             if status_payload is None:
                 return
 
-            status_ok = False
-            if len(status_payload) >= 13:
-                is_ok_flag = status_payload[12] == 0
+            # A1 payload offsets (relative to the payload, i.e. after the 6-byte header):
+            #   [0] state, [3] battery %, [4] temperature, [6] OK flag (0 = OK),
+            #   [7] error code when the flag is non-zero
+            if len(status_payload) >= 7:
+                is_ok_flag = status_payload[6] == 0
                 if is_ok_flag:
-                    status_ok = True
-                    status_byte = status_payload[6]
-                    battery_level = status_payload[9]
+                    status_byte = status_payload[0]
+                    battery_level = status_payload[3]
+                    temperature = status_payload[4]
                     logger.info(
-                        f"Printer Status OK (Flag=0). State: 0x{status_byte:02X}, Battery: {battery_level}%"
+                        f"Printer Status OK (Flag=0). State: 0x{status_byte:02X}, Battery: {battery_level}%, Temp: {temperature}"
                     )
                 else:
                     error_byte = 0
-                    if len(status_payload) >= 14:
-                        error_byte = status_payload[13]
+                    if len(status_payload) >= 8:
+                        error_byte = status_payload[7]
                     logger.error(
                         f"Printer Status Error (Flag!=0). Error code byte: 0x{error_byte:02X}"
                     )

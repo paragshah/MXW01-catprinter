@@ -66,7 +66,10 @@ generally follow the same structure as commands:
 | Unknown     | 1              | Variable byte          | Unknown. Observed as non-zero (eg, `0x03`) in some `A1` responses |
 | Length (LE) | 2              | `0x0000` - `0xFFFF`    | Length of the `Payload` field, Little Endian                      |
 | Payload     | Variable       | Response-specific data | See the [Command Reference](#command-reference)                   |
-| Footer      | 1              | `0xFF`                 |                                                                   |
+| Trailer     | 1              | Unknown                | Not a CRC8 of the payload. Observed as `0x00` on an MXW01         |
+
+Unlike outgoing commands, notifications carry no CRC. Example `A1` response:
+`22 21 a1 03 0a 00 | 00 00 00 5c 17 00 00 00 d1 00 | 00`
 
 ## Command Reference
 
@@ -103,12 +106,15 @@ generally follow the same structure as commands:
 
 **`A1` Status Payload:** TODO: more precisely describe this
 
-- `Payload[6]`: Status code (0=Standby, 1=Printing, etc.) if `Payload[12]` is
-  OK
-- `Payload[9]`: Battery level (approx)
-- `Payload[10]`: Temperature (approx)
-- `Payload[12]`: Overall Status Flag (0 = OK, Non-zero = Error)
-- `Payload[13]` (if Flag!=0): Error Code (1/9=No Paper, 4=Overheated, 8=Low
+Offsets are relative to the payload (packet offset minus the 6-byte header).
+The payload is 10 bytes long.
+
+- `Payload[0]`: Status code (0=Standby, 1=Printing, etc.) if `Payload[6]` is
+  OK. `0x02` has been seen while a print was running
+- `Payload[3]`: Battery level (approx)
+- `Payload[4]`: Temperature (approx)
+- `Payload[6]`: Overall Status Flag (0 = OK, Non-zero = Error)
+- `Payload[7]` (if Flag!=0): Error Code (1/9=No Paper, 4=Overheated, 8=Low
   Battery). Requires length check
 
 ## Example Printing Sequence
